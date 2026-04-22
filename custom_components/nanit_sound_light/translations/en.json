@@ -17,7 +17,7 @@
       },
       "speaker_ip": {
         "title": "Speaker IP",
-        "description": "Enter the local IP of your Sound & Light Machine (reserve it in your router's DHCP settings).",
+        "description": "Enter the local IP of your Sound & Light Machine (reserve it in your router's DHCP settings). Leave blank to use the cloud relay — the integration still works, but temperature and humidity sensors will be unavailable until a local IP is configured.",
         "data": {
           "speaker_ip": "Speaker IP address"
         }
@@ -30,6 +30,7 @@
     },
     "abort": {
       "nanit_not_installed": "The Nanit integration is not installed or not configured. Install it first, then retry.",
+      "nanit_needs_reauth": "The main Nanit integration's credentials are no longer valid. Open it, re-authenticate, then retry adding Sound & Light.",
       "already_configured": "This Sound & Light Machine is already configured.",
       "no_speakers_on_account": "No Sound & Light Machine is paired with this Nanit account."
     }

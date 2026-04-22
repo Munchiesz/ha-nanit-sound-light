@@ -117,7 +117,7 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._speakers = await self._async_discover_speakers()
             except NanitAuthError as err:
                 _LOGGER.warning("Speaker discovery auth failure: %s", err)
-                return self.async_abort(reason="nanit_not_installed")
+                return self.async_abort(reason="nanit_needs_reauth")
             except aiohttp.ClientError as err:
                 _LOGGER.warning("Speaker discovery network failure: %s", err)
                 return self.async_show_form(

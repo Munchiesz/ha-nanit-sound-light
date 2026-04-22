@@ -7,7 +7,7 @@ Exposes:
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE
@@ -66,10 +66,3 @@ class NanitSoundLightVolume(NanitSoundLightEntity, NumberEntity):
         except NanitTransportError as err:
             _LOGGER.warning("Failed to set volume on %s: %s", self.entity_id, err)
             raise
-
-    async def async_added_to_hass(self) -> None:
-        """Nothing extra — the parent handles coordinator subscription."""
-        await super().async_added_to_hass()
-
-    def _not_supported(self, *_args: Any, **_kwargs: Any) -> None:
-        """Placeholder to keep mypy/ruff happy for unused interfaces."""

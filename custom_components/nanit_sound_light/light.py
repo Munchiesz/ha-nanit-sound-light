@@ -29,6 +29,13 @@ _LOGGER = logging.getLogger(__name__)
 # the device may briefly echo the old state before confirming the new one.
 _COMMAND_GRACE_PERIOD: float = 15.0
 
+# Device brightness is a 0.0-1.0 float. Values below this threshold are
+# treated as "effectively off" when deciding the HA on/off state and when
+# deciding whether to surface a minimum brightness of 1 in the 0-255 scale.
+# Picked above a single HA brightness step (1/255 ≈ 0.0039) so rounding
+# error at the wire-format boundary never flips the on/off decision.
+_LIGHT_ON_BRIGHTNESS_EPSILON: float = 0.004
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -70,7 +77,7 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
         if state.light_enabled is not None:
             return state.light_enabled
         if state.brightness is not None:
-            return state.brightness > 0.001
+            return state.brightness > _LIGHT_ON_BRIGHTNESS_EPSILON
         return None
 
     @property
@@ -83,8 +90,8 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
             return None
         state = self.coordinator.data
         # Surface brightness=1 when the light is conceptually "on" but the
-        # device reports 0.0 — avoids HA interpreting it as off.
-        if state.power_on and state.light_enabled and dev_brightness < 0.004:
+        # device reports ~0.0 — avoids HA interpreting it as off.
+        if state.power_on and state.light_enabled and dev_brightness < _LIGHT_ON_BRIGHTNESS_EPSILON:
             return 1
         return min(255, max(0, int(dev_brightness * 255)))
 

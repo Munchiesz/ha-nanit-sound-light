@@ -92,7 +92,11 @@ async def async_setup_entry(
     ir.async_delete_issue(hass, DOMAIN, f"nanit_entry_missing_{entry.entry_id}")
 
     session = async_get_clientsession(hass)
-    token_provider = NanitPiggybackTokenProvider(hass, nanit_entry_id)
+    token_provider = NanitPiggybackTokenProvider(
+        hass,
+        nanit_entry_id,
+        issue_id=f"nanit_entry_missing_{entry.entry_id}",
+    )
 
     sound_light = NanitSoundLight(
         speaker_uid=speaker_uid,
@@ -109,6 +113,9 @@ async def async_setup_entry(
     try:
         await coordinator.async_setup()
     except NanitAuthError as err:
+        # Clean up partially-started tasks/websocket before handing control
+        # back to HA — otherwise we leak on every failed auth attempt.
+        await sound_light.async_stop()
         raise ConfigEntryAuthFailed(str(err)) from err
     except (NanitConnectionError, aiohttp.ClientError) as err:
         await sound_light.async_stop()
@@ -128,9 +135,16 @@ async def async_unload_entry(
     hass: HomeAssistant,
     entry: NanitSoundLightConfigEntry,
 ) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry.
+
+    ``runtime_data`` is only populated when setup ran to completion. On
+    failed-setup paths (auth failure, missing nanit entry, etc.) HA still
+    calls this to tear the entry down — guard the access so we don't
+    raise ``AttributeError`` and leave the entry stuck in a bad state.
+    """
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        runtime = entry.runtime_data
-        await runtime.coordinator.async_shutdown()
+        runtime = getattr(entry, "runtime_data", None)
+        if runtime is not None:
+            await runtime.coordinator.async_shutdown()
     return unload_ok

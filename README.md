@@ -38,6 +38,19 @@ This integration does not hold your Nanit credentials directly. On each API call
 
 If the main Nanit integration is removed or broken, this one will fail with a repair issue. Re-authenticate the main Nanit integration and this one will recover on next reload.
 
+## Contributing
+
+### Translations policy
+
+`custom_components/nanit_sound_light/strings.json` is the source-of-truth
+for user-facing strings. `translations/en.json` must be kept **byte-for-byte
+identical** — Home Assistant uses `translations/en.json` at runtime for
+English users and only falls back to `strings.json` when a translation is
+missing. Drift between them means English users silently see stale copy.
+
+When editing strings, update **both** files. A dedicated drift test is on
+the v0.3.0 roadmap.
+
 ## License
 
 [MIT](LICENSE)
