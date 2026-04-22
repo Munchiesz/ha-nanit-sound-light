@@ -27,6 +27,7 @@ except ModuleNotFoundError:
     for _name in (
         "homeassistant",
         "homeassistant.components",
+        "homeassistant.components.diagnostics",
         "homeassistant.components.light",
         "homeassistant.components.light.const",
         "homeassistant.components.number",
@@ -89,6 +90,33 @@ except ModuleNotFoundError:
 
     sys.modules["homeassistant.exceptions"].HomeAssistantError = _HomeAssistantError
 
+    # Entity category used by diagnostic sensors.
+    class _EntityCategory:
+        CONFIG = "config"
+        DIAGNOSTIC = "diagnostic"
+
+    sys.modules["homeassistant.const"].EntityCategory = _EntityCategory
+
+    # Minimal async_redact_data that walks dicts and replaces matching keys
+    # with "**REDACTED**" — mirrors HA's semantics for the subset of shapes
+    # our diagnostics emit (nested dicts + lists of primitives).
+    _REDACTED_VALUE = "**REDACTED**"
+
+    def _stub_redact_data(data: object, to_redact: object) -> object:
+        keys_to_redact = set(to_redact) if to_redact is not None else set()
+        if isinstance(data, dict):
+            return {
+                k: (
+                    _REDACTED_VALUE if k in keys_to_redact else _stub_redact_data(v, keys_to_redact)
+                )
+                for k, v in data.items()
+            }
+        if isinstance(data, list):
+            return [_stub_redact_data(v, keys_to_redact) for v in data]
+        return data
+
+    sys.modules["homeassistant.components.diagnostics"].async_redact_data = _stub_redact_data
+
     # Enum-style attribute containers that our `_attr_*` class vars reference.
     class _NumberMode:
         SLIDER = "slider"
@@ -101,6 +129,7 @@ except ModuleNotFoundError:
     class _SensorDeviceClass:
         TEMPERATURE = "temperature"
         HUMIDITY = "humidity"
+        ENUM = "enum"
 
     class _SensorStateClass:
         MEASUREMENT = "measurement"

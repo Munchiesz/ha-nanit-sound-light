@@ -32,6 +32,14 @@
       },
       "humidity": {
         "default": "mdi:water-percent"
+      },
+      "connection_mode": {
+        "default": "mdi:connection",
+        "state": {
+          "local": "mdi:lan-connect",
+          "cloud": "mdi:cloud-outline",
+          "unavailable": "mdi:lan-disconnect"
+        }
       }
     }
   }

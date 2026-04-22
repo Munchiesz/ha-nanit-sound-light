@@ -65,6 +65,14 @@
       },
       "humidity": {
         "name": "Humidity"
+      },
+      "connection_mode": {
+        "name": "Connection mode",
+        "state": {
+          "local": "Local",
+          "cloud": "Cloud",
+          "unavailable": "Unavailable"
+        }
       }
     }
   },
