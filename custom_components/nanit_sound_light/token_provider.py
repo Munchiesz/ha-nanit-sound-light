@@ -42,7 +42,7 @@ class NanitPiggybackTokenProvider:
         hass: HomeAssistant,
         nanit_entry_id: str,
         *,
-        issue_id: str,
+        issue_id: str | None,
     ) -> None:
         """Initialize the provider.
 
@@ -52,7 +52,10 @@ class NanitPiggybackTokenProvider:
                 to read tokens from.
             issue_id: Key used when creating/clearing the repair issue.
                 Usually derived from the Sound & Light config entry ID
-                so each entry has its own issue.
+                so each entry has its own issue. Pass ``None`` for
+                transient uses (config flow / reauth flow) where there's
+                no config entry yet and surfacing a repair issue would
+                be noise.
         """
         self._hass = hass
         self._nanit_entry_id = nanit_entry_id
@@ -85,8 +88,11 @@ class NanitPiggybackTokenProvider:
         return str(token)
 
     def _surface_issue(self) -> None:
-        """Create the repair issue if not already active."""
-        if self._issue_active:
+        """Create the repair issue if not already active.
+
+        No-op when ``issue_id`` is None (config-flow / reauth-flow uses).
+        """
+        if self._issue_id is None or self._issue_active:
             return
         ir.async_create_issue(
             self._hass,
@@ -101,7 +107,7 @@ class NanitPiggybackTokenProvider:
 
     def _clear_issue(self) -> None:
         """Delete the repair issue if we previously created it."""
-        if not self._issue_active:
+        if self._issue_id is None or not self._issue_active:
             return
         ir.async_delete_issue(self._hass, DOMAIN, self._issue_id)
         self._issue_active = False

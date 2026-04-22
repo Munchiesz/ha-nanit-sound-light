@@ -39,6 +39,18 @@ from .coordinator import NanitSoundLightCoordinator
 from .models import Baby
 from .token_provider import NanitPiggybackTokenProvider
 
+
+def _resolve_speaker_ip(entry: ConfigEntry) -> str | None:
+    """Return the effective speaker IP, preferring options over data.
+
+    Options-flow edits write to ``entry.options``; initial setup wrote the
+    value to ``entry.data``. Read options first so live edits take effect,
+    and fall back to data for the first load.
+    """
+    raw = entry.options.get(CONF_SPEAKER_IP) or entry.data.get(CONF_SPEAKER_IP)
+    return raw or None
+
+
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
@@ -70,7 +82,7 @@ async def async_setup_entry(
     camera_uid = entry.data[CONF_CAMERA_UID]
     camera_name = entry.data[CONF_CAMERA_NAME]
     speaker_uid = entry.data[CONF_SPEAKER_UID]
-    speaker_ip = entry.data.get(CONF_SPEAKER_IP) or None
+    speaker_ip = _resolve_speaker_ip(entry)
 
     # Surface a repair issue + defer setup if the main Nanit integration is gone.
     nanit_entry = hass.config_entries.async_get_entry(nanit_entry_id)
@@ -101,7 +113,7 @@ async def async_setup_entry(
     sound_light = NanitSoundLight(
         speaker_uid=speaker_uid,
         token_manager=cast(object, token_provider),  # type: ignore[arg-type]
-        rest_client=cast(object, None),  # type: ignore[arg-type]  # unused by sound_light.py
+        # rest_client is optional in our copy of aionanit_sl; not used here.
         session=session,
         device_ip=speaker_ip,
     )

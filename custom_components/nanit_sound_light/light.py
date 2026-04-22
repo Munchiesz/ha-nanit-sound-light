@@ -14,8 +14,10 @@ from typing import Any, ClassVar
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_HS_COLOR, LightEntity
 from homeassistant.components.light.const import ColorMode
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NanitSoundLightConfigEntry
 from .aionanit_sl.exceptions import NanitTransportError
@@ -47,7 +49,7 @@ async def async_setup_entry(
     async_add_entities([NanitSoundLightLamp(coordinator)])
 
 
-class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
+class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity, RestoreEntity):
     """Nanit Sound & Light Machine lamp — on/off, brightness, HS color."""
 
     _attr_supported_color_modes: ClassVar[set[ColorMode]] = {ColorMode.HS}
@@ -61,6 +63,21 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
         self._attr_unique_id = f"{baby.camera_uid}_sound_light_lamp"
         self._command_is_on: bool | None = None
         self._command_ts: float = 0.0
+        # Restored values from the last HA shutdown. Used until the
+        # coordinator has received its first push state from the device,
+        # at which point the push takes over.
+        self._restored_is_on: bool | None = None
+        self._restored_brightness: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last-known state so the entity doesn't blink to unknown on HA restart."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in (None, "unknown", "unavailable"):
+            self._restored_is_on = last.state == STATE_ON
+            brightness = last.attributes.get(ATTR_BRIGHTNESS)
+            if isinstance(brightness, int | float):
+                self._restored_brightness = int(brightness)
 
     @property
     def is_on(self) -> bool | None:
@@ -72,7 +89,9 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
             return self._command_is_on
 
         if self.coordinator.data is None:
-            return None
+            # No live data yet — fall back to the restored value while we
+            # wait for the first coordinator push.
+            return self._restored_is_on
         state = self.coordinator.data
         if state.light_enabled is not None:
             return state.light_enabled
@@ -99,7 +118,9 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
     def brightness(self) -> int | None:
         """Return brightness in HA's 0-255 scale."""
         if self.coordinator.data is None:
-            return None
+            # No live data yet — fall back to the restored value while we
+            # wait for the first coordinator push.
+            return self._restored_brightness
         dev_brightness = self.coordinator.data.brightness
         if dev_brightness is None:
             return None

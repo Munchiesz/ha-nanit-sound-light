@@ -22,6 +22,11 @@ from .entity import NanitSoundLightEntity
 PARALLEL_UPDATES = 0
 _LOGGER = logging.getLogger(__name__)
 
+# Shown in the dropdown when the device hasn't (yet) advertised any tracks —
+# otherwise HA renders an empty dropdown which is confusing. Selecting this
+# placeholder is rejected with a clear error message.
+_NO_TRACKS_PLACEHOLDER: str = "— no tracks reported —"
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -45,13 +50,16 @@ class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        """Return the list of available tracks reported by the device."""
-        if self.coordinator.data is None:
-            return []
-        tracks = self.coordinator.data.available_tracks
-        if not tracks:
-            return []
-        return list(tracks)
+        """Return the list of tracks the device advertises.
+
+        When the device hasn't yet sent a state push with
+        ``available_tracks`` (e.g. just after setup in cloud-relay mode),
+        we surface a placeholder so the dropdown isn't empty. Selecting
+        the placeholder is rejected in ``async_select_option``.
+        """
+        if self.coordinator.data is None or not self.coordinator.data.available_tracks:
+            return [_NO_TRACKS_PLACEHOLDER]
+        return list(self.coordinator.data.available_tracks)
 
     @property
     def current_option(self) -> str | None:
@@ -68,11 +76,17 @@ class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
         invalid value, and the device's firmware behavior on unknown track
         names is unspecified.
         """
-        available = self.options
-        if option not in available:
+        if option == _NO_TRACKS_PLACEHOLDER:
+            raise HomeAssistantError(
+                "No tracks have been reported by the speaker yet. "
+                "Wait for the device to push its state, then try again."
+            )
+        if self.coordinator.data is None or not self.coordinator.data.available_tracks:
+            raise HomeAssistantError("No tracks are currently available from the speaker.")
+        if option not in self.coordinator.data.available_tracks:
             raise HomeAssistantError(
                 f"Track {option!r} is not available on this device. "
-                f"Available tracks: {', '.join(available) or '<none reported>'}"
+                f"Available tracks: {', '.join(self.coordinator.data.available_tracks)}"
             )
         try:
             await self.coordinator.sound_light.async_set_track(option)

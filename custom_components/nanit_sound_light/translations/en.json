@@ -21,18 +21,39 @@
         "data": {
           "speaker_ip": "Speaker IP address"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Sound & Light",
+        "description": "This integration relies on the main {main_integration_name} integration for authentication. Open that integration and re-authenticate it, then click Submit here to retry.",
+        "data": {}
       }
     },
     "error": {
       "invalid_ip": "Invalid IP address",
       "no_speakers": "No Sound & Light Machine is paired with the selected Nanit account.",
-      "discovery_failed": "Failed to discover speakers. Check that the Nanit integration is authenticated."
+      "discovery_failed": "Failed to discover speakers. Check that the Nanit integration is authenticated.",
+      "nanit_still_broken": "Still unable to read a valid access token from the main Nanit integration. Re-authenticate it, then try again."
     },
     "abort": {
       "nanit_not_installed": "The Nanit integration is not installed or not configured. Install it first, then retry.",
       "nanit_needs_reauth": "The main Nanit integration's credentials are no longer valid. Open it, re-authenticate, then retry adding Sound & Light.",
       "already_configured": "This Sound & Light Machine is already configured.",
-      "no_speakers_on_account": "No Sound & Light Machine is paired with this Nanit account."
+      "no_speakers_on_account": "No Sound & Light Machine is paired with this Nanit account.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nanit Sound & Light options",
+        "description": "Edit the speaker IP. Leave blank to fall back to cloud relay — temperature and humidity sensors will be unavailable in that mode.",
+        "data": {
+          "speaker_ip": "Speaker IP address"
+        }
+      }
+    },
+    "error": {
+      "invalid_ip": "Invalid IP address"
     }
   },
   "entity": {
@@ -80,6 +101,10 @@
     "nanit_entry_missing": {
       "title": "Nanit integration is missing",
       "description": "The main Nanit integration that Sound & Light depends on has been removed. Install and configure it, then reload this integration."
+    },
+    "extended_disconnect": {
+      "title": "Sound & Light Machine is unreachable",
+      "description": "The speaker has been disconnected for more than {minutes} minutes. Home Assistant is still retrying in the background, but if this persists check that the speaker is powered on, connected to Wi-Fi, and reachable at the configured LAN IP. Open Settings → Devices & Services → Nanit Sound & Light → Configure to edit the IP or switch to cloud-relay mode."
     }
   }
 }

@@ -1,10 +1,19 @@
-"""Config flow for the Nanit Sound & Light integration.
+"""Config flow + options flow + reauth flow for Nanit Sound & Light.
 
-Three-step user setup:
-  1. ``user``       — pick which main Nanit integration entry to piggyback on.
-  2. ``speaker``    — pick which Sound & Light Machine to control
-                       (fetched from /babies using the piggybacked tokens).
-  3. ``speaker_ip`` — enter the local IP of the chosen speaker.
+Initial setup (``async_step_user``):
+  1. pick which main Nanit integration entry to piggyback on
+  2. pick which Sound & Light Machine to control
+  3. enter the speaker's LAN IP (optional)
+
+Options flow:
+  Edit the speaker IP at any time. Updates trigger a full integration
+  reload via the update-listener registered in ``__init__.py``.
+
+Reauth flow:
+  Fired when our piggybacked token reads fail. Since we don't own the
+  credentials, reauth is simply a prompt pointing the user to the main
+  Nanit integration's own reauth flow; once they've done that, we
+  confirm by re-reading the token here and reload the entry.
 """
 
 from __future__ import annotations
@@ -16,7 +25,8 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 from aionanit import NanitAuthError
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -80,6 +90,11 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
         self._nanit_entry_id: str = ""
         self._speakers: list[dict[str, str]] = []  # [{speaker_uid, camera_uid, camera_name}]
         self._selected: dict[str, str] = {}
+        self._reauth_entry: ConfigEntry | None = None
+
+    # ------------------------------------------------------------------
+    # Initial user flow
+    # ------------------------------------------------------------------
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Pick which main Nanit integration entry to piggyback on."""
@@ -196,6 +211,66 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    # ------------------------------------------------------------------
+    # Reauth flow
+    # ------------------------------------------------------------------
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Start reauth — triggered when our piggybacked token reads fail."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm reauth by re-reading the token from the main Nanit entry.
+
+        We don't hold credentials ourselves — the user's job is to re-auth
+        the main Nanit integration. Once they click Submit here, we verify
+        that the main integration now has a valid access_token and reload.
+        """
+        assert self._reauth_entry is not None
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            nanit_entry_id = self._reauth_entry.data.get(CONF_NANIT_ENTRY_ID)
+            provider = NanitPiggybackTokenProvider(
+                self.hass,
+                nanit_entry_id,
+                issue_id=f"nanit_entry_missing_{self._reauth_entry.entry_id}",
+            )
+            try:
+                await provider.async_get_access_token()
+            except NanitAuthError:
+                errors["base"] = "nanit_still_broken"
+            else:
+                return self.async_update_reload_and_abort(
+                    self._reauth_entry,
+                    reason="reauth_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders={"main_integration_name": "Nanit"},
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Options flow
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> NanitSoundLightOptionsFlow:
+        """Get the options flow for this handler."""
+        return NanitSoundLightOptionsFlow()
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
     async def _async_discover_speakers(self) -> list[dict[str, str]]:
         """Fetch /babies and extract paired speakers.
 
@@ -203,7 +278,14 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
         Raises NanitAuthError if the piggybacked tokens are invalid,
         aiohttp.ClientError on network failure.
         """
-        provider = NanitPiggybackTokenProvider(self.hass, self._nanit_entry_id)
+        provider = NanitPiggybackTokenProvider(
+            self.hass,
+            self._nanit_entry_id,
+            # The config flow is transient — no config entry exists yet for
+            # this speaker. Skip the repair-issue path so we don't leave
+            # stray issues in the registry if the user cancels setup.
+            issue_id=None,
+        )
         access_token = await provider.async_get_access_token()
 
         session = async_get_clientsession(self.hass)
@@ -238,3 +320,42 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             )
         return result
+
+
+class NanitSoundLightOptionsFlow(OptionsFlow):
+    """Options flow — edit the speaker IP after initial setup."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Single-step form to edit the speaker IP."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            raw = user_input.get(CONF_SPEAKER_IP, "").strip()
+            if raw:
+                try:
+                    ipaddress.ip_address(raw)
+                except ValueError:
+                    errors[CONF_SPEAKER_IP] = "invalid_ip"
+            if not errors:
+                # Save to options — the update listener in __init__.py
+                # reloads the entry so NanitSoundLight picks up the new IP.
+                return self.async_create_entry(
+                    title="",
+                    data={CONF_SPEAKER_IP: raw},
+                )
+
+        # Prefill with the current effective value: options overrides data.
+        current = self.config_entry.options.get(
+            CONF_SPEAKER_IP,
+            self.config_entry.data.get(CONF_SPEAKER_IP, ""),
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_SPEAKER_IP, default=current): cv.string,
+                }
+            ),
+            errors=errors,
+        )

@@ -69,7 +69,7 @@ async def async_get_config_entry_diagnostics(
         last_update_success = coordinator.last_update_success
 
     diagnostics: dict[str, Any] = {
-        "integration_version": "0.3.0",
+        "integration_version": "0.4.0",
         "entry": {
             "entry_id": entry.entry_id,
             "title": entry.title,

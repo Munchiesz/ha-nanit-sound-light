@@ -88,10 +88,16 @@ class NanitSoundLight:
         self,
         speaker_uid: str,
         token_manager: TokenManager,
-        rest_client: NanitRestClient,
-        session: aiohttp.ClientSession,
+        rest_client: NanitRestClient | None = None,
+        session: aiohttp.ClientSession | None = None,
         device_ip: str | None = None,
     ) -> None:
+        # ``rest_client`` is currently unused inside this module; the
+        # parameter is kept for API compatibility with older callers that
+        # still pass one. When this class grows to use the REST client
+        # (e.g. for richer device metadata), the signature will tighten
+        # back to required.
+        assert session is not None, "session is required"
         self._speaker_uid = speaker_uid
         self._device_ip = device_ip
         self._token_manager = token_manager
