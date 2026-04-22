@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nanit Sound & Light",
+        "description": "Pick which Nanit account to use. The main Nanit integration handles authentication for this addon.",
+        "data": {
+          "nanit_entry_id": "Nanit integration"
+        }
+      },
+      "speaker": {
+        "title": "Select Sound & Light Machine",
+        "description": "Choose which paired Sound & Light Machine to control.",
+        "data": {
+          "speaker_uid": "Sound & Light Machine"
+        }
+      },
+      "speaker_ip": {
+        "title": "Speaker IP",
+        "description": "Enter the local IP of your Sound & Light Machine (reserve it in your router's DHCP settings).",
+        "data": {
+          "speaker_ip": "Speaker IP address"
+        }
+      }
+    },
+    "error": {
+      "invalid_ip": "Invalid IP address",
+      "no_speakers": "No Sound & Light Machine is paired with the selected Nanit account.",
+      "discovery_failed": "Failed to discover speakers. Check that the Nanit integration is authenticated."
+    },
+    "abort": {
+      "nanit_not_installed": "The Nanit integration is not installed or not configured. Install it first, then retry.",
+      "already_configured": "This Sound & Light Machine is already configured.",
+      "no_speakers_on_account": "No Sound & Light Machine is paired with this Nanit account."
+    }
+  },
+  "entity": {
+    "light": {
+      "lamp": {
+        "name": "Lamp"
+      }
+    }
+  },
+  "issues": {
+    "nanit_entry_missing": {
+      "title": "Nanit integration is missing",
+      "description": "The main Nanit integration that Sound & Light depends on has been removed. Install and configure it, then reload this integration."
+    }
+  }
+}

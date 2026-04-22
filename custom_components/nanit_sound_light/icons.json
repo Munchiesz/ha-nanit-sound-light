@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "light": {
+      "lamp": {
+        "default": "mdi:lamp"
+      }
+    }
+  }
+}

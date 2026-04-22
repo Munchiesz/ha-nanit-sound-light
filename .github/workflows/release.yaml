@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  attach-artifact:
+    name: Attach nanit_sound_light.zip
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Create integration zip
+        # HACS with `zip_release: true` + `filename: nanit_sound_light.zip`
+        # expects a zip whose root contains `custom_components/<domain>/`.
+        run: zip -r nanit_sound_light.zip custom_components/nanit_sound_light/
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" nanit_sound_light.zip --clobber

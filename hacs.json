@@ -1,0 +1,7 @@
+{
+  "name": "Nanit Sound & Light",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "nanit_sound_light.zip",
+  "homeassistant": "2025.12.0"
+}
