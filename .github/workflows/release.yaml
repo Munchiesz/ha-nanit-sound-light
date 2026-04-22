@@ -18,8 +18,12 @@ jobs:
 
       - name: Create integration zip
         # HACS with `zip_release: true` + `filename: nanit_sound_light.zip`
-        # expects a zip whose root contains `custom_components/<domain>/`.
-        run: zip -r nanit_sound_light.zip custom_components/nanit_sound_light/
+        # expects the INTEGRATION FOLDER CONTENTS at the zip root
+        # (manifest.json, __init__.py, etc. at root) — HACS extracts the
+        # zip directly into /config/custom_components/<domain>/.
+        run: |
+          cd custom_components/nanit_sound_light
+          zip -r ../../nanit_sound_light.zip .
 
       - name: Upload release asset
         env:
