@@ -4,6 +4,35 @@
       "lamp": {
         "default": "mdi:lamp"
       }
+    },
+    "switch": {
+      "sound": {
+        "default": "mdi:music-note",
+        "state": {
+          "off": "mdi:music-note-off"
+        }
+      },
+      "power": {
+        "default": "mdi:power"
+      }
+    },
+    "number": {
+      "volume": {
+        "default": "mdi:volume-high"
+      }
+    },
+    "select": {
+      "track": {
+        "default": "mdi:music"
+      }
+    },
+    "sensor": {
+      "temperature": {
+        "default": "mdi:thermometer"
+      },
+      "humidity": {
+        "default": "mdi:water-percent"
+      }
     }
   }
 }

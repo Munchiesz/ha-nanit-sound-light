@@ -39,6 +39,32 @@
       "lamp": {
         "name": "Lamp"
       }
+    },
+    "switch": {
+      "sound": {
+        "name": "Sound"
+      },
+      "power": {
+        "name": "Power"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Volume"
+      }
+    },
+    "select": {
+      "track": {
+        "name": "Track"
+      }
+    },
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      }
     }
   },
   "issues": {
