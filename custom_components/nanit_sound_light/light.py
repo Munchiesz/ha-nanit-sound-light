@@ -80,6 +80,21 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity):
             return state.brightness > _LIGHT_ON_BRIGHTNESS_EPSILON
         return None
 
+    def _handle_coordinator_update(self) -> None:
+        """Clear grace early when the device push confirms our command.
+
+        Without this, ``is_on`` would echo the optimistic value for the
+        full 15 s window even if the device has already authoritatively
+        reported a contradicting state. Clearing grace the moment the
+        device pushes the commanded value lets a *subsequent*
+        contradicting push bubble through instead of being masked.
+        """
+        if self._command_is_on is not None and self.coordinator.data is not None:
+            observed = self.coordinator.data.light_enabled
+            if observed is not None and bool(observed) == self._command_is_on:
+                self._command_is_on = None
+        super()._handle_coordinator_update()
+
     @property
     def brightness(self) -> int | None:
         """Return brightness in HA's 0-255 scale."""

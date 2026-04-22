@@ -29,6 +29,10 @@ except ModuleNotFoundError:
         "homeassistant.components",
         "homeassistant.components.light",
         "homeassistant.components.light.const",
+        "homeassistant.components.number",
+        "homeassistant.components.select",
+        "homeassistant.components.sensor",
+        "homeassistant.components.switch",
         "homeassistant.config_entries",
         "homeassistant.const",
         "homeassistant.core",
@@ -48,3 +52,62 @@ except ModuleNotFoundError:
     sys.modules["homeassistant.const"].CONF_ACCESS_TOKEN = "access_token"
     sys.modules["homeassistant.const"].CONF_EMAIL = "email"
     sys.modules["homeassistant.const"].CONF_PASSWORD = "password"
+
+    # Replace HA base classes that we subclass with real plain classes so
+    # multi-inheritance works at class-creation time — MagicMock as a base
+    # produces metaclass conflicts when combined with other MagicMock bases.
+
+    class _SubscriptableBase:
+        """Base supporting ``Class[T]`` used in HA's generic entity classes.
+
+        Includes a no-op ``_handle_coordinator_update`` so that subclasses
+        which call ``super()._handle_coordinator_update()`` don't raise
+        in tests.
+        """
+
+        def __class_getitem__(cls, _item: object) -> type:
+            return cls
+
+        def _handle_coordinator_update(self) -> None:
+            """No-op: real CoordinatorEntity writes HA state; we don't need to."""
+
+    _real_classes = {
+        ("homeassistant.helpers.update_coordinator", "CoordinatorEntity"): _SubscriptableBase,
+        ("homeassistant.helpers.update_coordinator", "DataUpdateCoordinator"): _SubscriptableBase,
+        ("homeassistant.components.switch", "SwitchEntity"): type("SwitchEntity", (), {}),
+        ("homeassistant.components.select", "SelectEntity"): type("SelectEntity", (), {}),
+        ("homeassistant.components.number", "NumberEntity"): type("NumberEntity", (), {}),
+        ("homeassistant.components.sensor", "SensorEntity"): type("SensorEntity", (), {}),
+        ("homeassistant.components.light", "LightEntity"): type("LightEntity", (), {}),
+    }
+    for (module_name, cls_name), cls in _real_classes.items():
+        setattr(sys.modules[module_name], cls_name, cls)
+
+    # Real Exception subclass so `pytest.raises(HomeAssistantError)` works.
+    class _HomeAssistantError(Exception):
+        pass
+
+    sys.modules["homeassistant.exceptions"].HomeAssistantError = _HomeAssistantError
+
+    # Enum-style attribute containers that our `_attr_*` class vars reference.
+    class _NumberMode:
+        SLIDER = "slider"
+
+    class _ColorMode:
+        ONOFF = "onoff"
+        HS = "hs"
+        BRIGHTNESS = "brightness"
+
+    class _SensorDeviceClass:
+        TEMPERATURE = "temperature"
+        HUMIDITY = "humidity"
+
+    class _SensorStateClass:
+        MEASUREMENT = "measurement"
+
+    sys.modules["homeassistant.components.number"].NumberMode = _NumberMode
+    sys.modules["homeassistant.components.light.const"].ColorMode = _ColorMode
+    sys.modules["homeassistant.components.sensor"].SensorDeviceClass = _SensorDeviceClass
+    sys.modules["homeassistant.components.sensor"].SensorStateClass = _SensorStateClass
+    sys.modules["homeassistant.components.light"].ATTR_BRIGHTNESS = "brightness"
+    sys.modules["homeassistant.components.light"].ATTR_HS_COLOR = "hs_color"

@@ -11,6 +11,7 @@ import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import NanitSoundLightConfigEntry
@@ -60,7 +61,19 @@ class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
         return self.coordinator.data.current_track
 
     async def async_select_option(self, option: str) -> None:
-        """Change the active track."""
+        """Change the active track.
+
+        Validates against ``self.options`` before firing — HA's SelectEntity
+        doesn't guard against service calls that bypass the dropdown with an
+        invalid value, and the device's firmware behavior on unknown track
+        names is unspecified.
+        """
+        available = self.options
+        if option not in available:
+            raise HomeAssistantError(
+                f"Track {option!r} is not available on this device. "
+                f"Available tracks: {', '.join(available) or '<none reported>'}"
+            )
         try:
             await self.coordinator.sound_light.async_set_track(option)
         except NanitTransportError as err:

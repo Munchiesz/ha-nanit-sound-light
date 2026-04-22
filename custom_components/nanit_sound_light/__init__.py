@@ -126,9 +126,22 @@ async def async_setup_entry(
         coordinator=coordinator,
     )
 
+    # Reload this entry whenever its data/options change so edits (future
+    # options flow for speaker IP, nanit_entry_id, etc.) take effect without
+    # the user having to manually reload the integration.
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
+
+
+async def _async_update_listener(
+    hass: HomeAssistant,
+    entry: NanitSoundLightConfigEntry,
+) -> None:
+    """Reload the entry when its data or options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(

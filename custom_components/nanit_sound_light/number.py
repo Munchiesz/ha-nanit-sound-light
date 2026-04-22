@@ -50,7 +50,13 @@ class NanitSoundLightVolume(NanitSoundLightEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return current volume in HA's 0-100 scale."""
+        """Return current volume in HA's 0-100 scale.
+
+        Round-trip is stable: we use banker's rounding (`round()`), so when
+        the user sets 56 we write 0.56, and the device echoes 0.56 which
+        rounds back to 56 — no UI bounce. Because we immediately write back
+        the rounded-derived value, there's no float drift.
+        """
         if self.coordinator.data is None:
             return None
         value = self.coordinator.data.volume

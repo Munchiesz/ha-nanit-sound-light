@@ -68,6 +68,23 @@ class _BaseSLSwitch(NanitSoundLightEntity, SwitchEntity):
         value = getattr(self.coordinator.data, self._state_attr, None)
         return bool(value) if value is not None else None
 
+    def _handle_coordinator_update(self) -> None:
+        """Clear grace early when the device push confirms our command.
+
+        Without this, ``is_on`` would echo the optimistic value for the
+        full 15 s window even if the device has already authoritatively
+        reported a contradicting state (e.g. the command silently
+        rolled back because a prerequisite wasn't met). Clearing grace
+        as soon as the device pushes the commanded value lets a
+        *subsequent* contradicting push bubble through instead of
+        being masked.
+        """
+        if self._command_is_on is not None and self.coordinator.data is not None:
+            observed = getattr(self.coordinator.data, self._state_attr, None)
+            if observed is not None and bool(observed) == self._command_is_on:
+                self._command_is_on = None
+        super()._handle_coordinator_update()
+
     def _clear_grace(self) -> None:
         self._command_is_on = None
 
