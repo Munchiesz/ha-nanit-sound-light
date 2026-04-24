@@ -24,6 +24,7 @@ from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from . import NanitSoundLightConfigEntry
 from .const import (
@@ -31,6 +32,7 @@ from .const import (
     CONF_NANIT_ENTRY_ID,
     CONF_SPEAKER_IP,
     CONF_SPEAKER_UID,
+    DOMAIN,
 )
 
 _REDACT_ENTRY_KEYS: set[str] = {
@@ -68,8 +70,21 @@ async def async_get_config_entry_diagnostics(
         coordinator_connected = coordinator.connected
         last_update_success = coordinator.last_update_success
 
+    # Pull the release version from the manifest instead of hard-coding a
+    # string that silently drifts at every bump. Best-effort — diagnostics
+    # should never fail just because the loader can't find the manifest.
+    integration_version: str | None = None
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+        integration_version = integration.version
+    except Exception:
+        # Diagnostics must never fail just because manifest metadata can't
+        # be read — fall back to ``None`` so the rest of the dump still
+        # reaches the user's bug report.
+        integration_version = None
+
     diagnostics: dict[str, Any] = {
-        "integration_version": "0.4.0",
+        "integration_version": integration_version,
         "entry": {
             "entry_id": entry.entry_id,
             "title": entry.title,
@@ -78,7 +93,12 @@ async def async_get_config_entry_diagnostics(
             "source": entry.source,
             "unique_id": entry.unique_id,
             "data": async_redact_data(dict(entry.data), _REDACT_ENTRY_KEYS),
-            "options": dict(entry.options) if entry.options else {},
+            # Options can also hold a speaker IP (via the options flow),
+            # so apply the same redaction set here — otherwise an IP set
+            # after initial setup would leak through diagnostics exports.
+            "options": (
+                async_redact_data(dict(entry.options), _REDACT_ENTRY_KEYS) if entry.options else {}
+            ),
         },
         "runtime": {
             "loaded": runtime is not None,

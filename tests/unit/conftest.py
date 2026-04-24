@@ -45,7 +45,9 @@ except ModuleNotFoundError:
         "homeassistant.helpers.entity_platform",
         "homeassistant.helpers.event",
         "homeassistant.helpers.issue_registry",
+        "homeassistant.helpers.restore_state",
         "homeassistant.helpers.update_coordinator",
+        "homeassistant.loader",
     ):
         sys.modules.setdefault(_name, MagicMock())
     # Concrete values for constants our code actually reads — without these
@@ -53,6 +55,7 @@ except ModuleNotFoundError:
     sys.modules["homeassistant.const"].CONF_ACCESS_TOKEN = "access_token"
     sys.modules["homeassistant.const"].CONF_EMAIL = "email"
     sys.modules["homeassistant.const"].CONF_PASSWORD = "password"
+    sys.modules["homeassistant.const"].STATE_ON = "on"
 
     # Replace HA base classes that we subclass with real plain classes so
     # multi-inheritance works at class-creation time — MagicMock as a base
@@ -72,9 +75,21 @@ except ModuleNotFoundError:
         def _handle_coordinator_update(self) -> None:
             """No-op: real CoordinatorEntity writes HA state; we don't need to."""
 
+    # RestoreEntity is used as a mixin base by several platforms; it has to
+    # be a real class (MagicMock can't be subclassed as a base at class-
+    # creation time alongside other real bases). The stub exposes the only
+    # method our restore-aware entities call.
+    class _RestoreEntity:
+        async def async_added_to_hass(self) -> None:
+            return None
+
+        async def async_get_last_state(self) -> None:
+            return None
+
     _real_classes = {
         ("homeassistant.helpers.update_coordinator", "CoordinatorEntity"): _SubscriptableBase,
         ("homeassistant.helpers.update_coordinator", "DataUpdateCoordinator"): _SubscriptableBase,
+        ("homeassistant.helpers.restore_state", "RestoreEntity"): _RestoreEntity,
         ("homeassistant.components.switch", "SwitchEntity"): type("SwitchEntity", (), {}),
         ("homeassistant.components.select", "SelectEntity"): type("SelectEntity", (), {}),
         ("homeassistant.components.number", "NumberEntity"): type("NumberEntity", (), {}),
@@ -96,6 +111,12 @@ except ModuleNotFoundError:
         DIAGNOSTIC = "diagnostic"
 
     sys.modules["homeassistant.const"].EntityCategory = _EntityCategory
+
+    # ``@callback`` is a pass-through decorator in HA; the real version just
+    # flags the function for the event loop. The default MagicMock attribute
+    # would replace decorated methods with another MagicMock, so tests that
+    # call them would see no effect — stub it as identity.
+    sys.modules["homeassistant.core"].callback = lambda f: f
 
     # Minimal async_redact_data that walks dicts and replaces matching keys
     # with "**REDACTED**" — mirrors HA's semantics for the subset of shapes

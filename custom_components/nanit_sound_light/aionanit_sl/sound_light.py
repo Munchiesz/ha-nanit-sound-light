@@ -7,13 +7,14 @@ import asyncio
 import dataclasses
 import logging
 import os
+import random
 import ssl
 from collections.abc import Callable
 
 import aiohttp
 
 from aionanit.auth import TokenManager
-from aionanit import NanitConnectionError
+from aionanit import NanitAuthError, NanitConnectionError
 from aionanit.rest import NanitRestClient
 
 from .exceptions import NanitTransportError
@@ -193,8 +194,8 @@ class NanitSoundLight:
         show as unavailable until the connection succeeds).
         """
         self._stopped = False
-        # Reset preference based on whether IP is available
-        self._use_cloud_relay = self._device_ip is None
+        # ``_use_cloud_relay`` is reset at the top of ``_async_connect``;
+        # no need to also reset it here.
         try:
             await self._async_connect()
         except (NanitTransportError, NanitConnectionError):
@@ -202,7 +203,7 @@ class NanitSoundLight:
                 "S&L %s initial connection failed; will retry in background",
                 self._speaker_uid,
             )
-            self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
+            self._spawn_reconnect_task()
 
     async def async_stop(self) -> None:
         """Stop the S&L connection gracefully."""
@@ -331,8 +332,6 @@ class NanitSoundLight:
             timeout=aiohttp.ClientTimeout(total=15),
         ) as resp:
             if resp.status == 401:
-                from aionanit import NanitAuthError
-
                 raise NanitAuthError("Access token invalid for udtokens")
             if resp.status != 200:
                 body_text = await resp.text()
@@ -355,7 +354,13 @@ class NanitSoundLight:
         )
 
     async def _token_refresh_loop(self) -> None:
-        """Periodically refresh the device token."""
+        """Periodically refresh the device token.
+
+        A ``NanitAuthError`` here means the main Nanit integration's access
+        token is no longer usable and only a user re-auth can recover; we
+        surface that through AUTH_FAILED so the coordinator can trigger the
+        reauth flow instead of endlessly logging warnings.
+        """
         try:
             while not self._stopped:
                 await asyncio.sleep(_TOKEN_REFRESH_INTERVAL)
@@ -364,6 +369,10 @@ class NanitSoundLight:
                 try:
                     await self._async_fetch_device_token()
                     _LOGGER.debug("S&L device token refreshed")
+                except NanitAuthError as err:
+                    _LOGGER.warning("S&L device token refresh auth failed: %s", err)
+                    self._fire_event(SoundLightEventKind.AUTH_FAILED)
+                    return
                 except Exception as err:
                     _LOGGER.warning("S&L device token refresh failed: %s", err)
         except asyncio.CancelledError:
@@ -399,11 +408,23 @@ class NanitSoundLight:
                 self._connected = False
                 self._fire_event(SoundLightEventKind.CONNECTION_CHANGE)
 
+            # Try local first whenever an IP is configured — don't carry a
+            # previous cloud-relay fallback forward. Without this, a single
+            # transient LAN failure would lock the speaker into cloud-only
+            # mode for the life of the process and silently hide the
+            # temperature/humidity readings that only flow over local.
+            self._use_cloud_relay = self._device_ip is None
+
             # ----- attempt local WebSocket first when preferred -----
             if not self._use_cloud_relay and self._device_ip:
                 if not self._device_token:
                     try:
                         await self._async_fetch_device_token()
+                    except NanitAuthError:
+                        # The main Nanit access token is invalid — there's no
+                        # point falling through to cloud (it'll fail with the
+                        # same token) and it's a user-actionable failure.
+                        raise
                     except Exception as err:
                         _LOGGER.debug(
                             "Device token fetch failed for S&L %s: %s",
@@ -457,8 +478,11 @@ class NanitSoundLight:
                         max_msg_size=_MAX_MSG_SIZE,
                         # Cloud relay uses default TLS verification (no ssl= override)
                     )
-                    # Track that we ended up on cloud relay (affects poll strategy)
+                    # Landed on cloud this attempt — the connection_mode
+                    # sensor reads this flag to report "cloud" vs "local".
                     self._use_cloud_relay = True
+                except NanitAuthError:
+                    raise
                 except Exception as err:
                     _LOGGER.warning(
                         "Cloud relay failed for S&L %s: %s",
@@ -577,8 +601,23 @@ class NanitSoundLight:
         # Auto-reconnect if not explicitly stopped
         self._connected = False
         self._fire_event(SoundLightEventKind.CONNECTION_CHANGE)
-        if not self._stopped:
-            self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
+        self._spawn_reconnect_task()
+
+    def _spawn_reconnect_task(self) -> None:
+        """Start the reconnect loop, cancelling any stale prior task first.
+
+        Without this, ``_recv_loop`` and ``_reconnect_loop`` (and ``async_start``
+        on initial failure) can each overwrite ``_reconnect_task`` with a new
+        task while the previous one is still alive — ``async_stop`` then only
+        awaits the latest handle and the older task lingers until the event
+        loop tears down.
+        """
+        if self._stopped:
+            return
+        existing = self._reconnect_task
+        if existing is not None and not existing.done():
+            existing.cancel()
+        self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
 
     def _apply_state(self, decoded: SLDecodedState) -> None:
         """Merge a decoded state into the current state and fire event."""
@@ -730,6 +769,10 @@ class NanitSoundLight:
                 _LOGGER.debug("S&L poll: reconnecting to refresh state")
                 try:
                     await self._async_connect(silent=True)
+                except NanitAuthError as err:
+                    _LOGGER.warning("S&L poll reconnect auth failed: %s", err)
+                    self._fire_event(SoundLightEventKind.AUTH_FAILED)
+                    return
                 except Exception as err:
                     _LOGGER.debug("S&L poll reconnect failed: %s", err)
                     # Silent connect failed — mark disconnected so entity
@@ -747,8 +790,6 @@ class NanitSoundLight:
         if self._stopped:
             return
 
-        import random
-
         backoff = _INITIAL_BACKOFF
         jitter = random.random() * _JITTER_MAX
 
@@ -764,14 +805,24 @@ class NanitSoundLight:
                 return
 
             try:
-                # Refresh device token before reconnecting
+                # Refresh device token before reconnecting. Auth failures
+                # here indicate the main integration's access token is gone
+                # and retrying can't recover — hand off to reauth.
                 try:
                     await self._async_fetch_device_token()
+                except NanitAuthError as err:
+                    _LOGGER.warning("S&L reconnect auth failed: %s", err)
+                    self._fire_event(SoundLightEventKind.AUTH_FAILED)
+                    return
                 except Exception:
                     _LOGGER.debug("Token refresh failed during reconnect, using cached")
 
                 await self._async_connect()
                 _LOGGER.info("S&L reconnected successfully")
+                return
+            except NanitAuthError as err:
+                _LOGGER.warning("S&L reconnect auth failed: %s", err)
+                self._fire_event(SoundLightEventKind.AUTH_FAILED)
                 return
             except Exception as err:
                 _LOGGER.warning("S&L reconnect failed: %s", err)

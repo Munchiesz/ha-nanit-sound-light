@@ -54,6 +54,11 @@ class SoundLightEventKind(Enum):
     SENSOR_UPDATE = "sensor_update"
     ROUTINES_UPDATE = "routines_update"
     CONNECTION_CHANGE = "connection_change"
+    # Raised when a background loop hits a ``NanitAuthError`` that the user
+    # must resolve (by re-authenticating the main Nanit integration). The
+    # coordinator turns this into ``ConfigEntry.async_start_reauth`` so the
+    # reauth card appears in the UI instead of the failure sitting in logs.
+    AUTH_FAILED = "auth_failed"
 
 
 @dataclass(frozen=True)

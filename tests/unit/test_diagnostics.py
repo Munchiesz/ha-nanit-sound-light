@@ -98,6 +98,18 @@ async def test_diagnostics_includes_runtime_state_snapshot() -> None:
     assert snapshot["temperature_c"] == pytest.approx(22.1)
 
 
+async def test_diagnostics_redacts_speaker_ip_from_options() -> None:
+    """An IP set via the options flow writes to ``entry.options`` — the
+    same redaction the data dict gets needs to apply to options too, or
+    the IP leaks through diagnostics exports."""
+    entry = _make_entry(runtime=None)
+    entry.options = {"speaker_ip": "192.168.1.42"}
+
+    result = await async_get_config_entry_diagnostics(MagicMock(), entry)
+
+    assert result["entry"]["options"]["speaker_ip"] == "**REDACTED**"
+
+
 async def test_diagnostics_state_snapshot_matches_asdict() -> None:
     """Defensive: the redaction helper should not strip any of the state
     field names we expect to keep (all SL state is public-ish)."""

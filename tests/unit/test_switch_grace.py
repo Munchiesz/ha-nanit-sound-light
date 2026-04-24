@@ -31,6 +31,7 @@ def _make_switch(sound_on: bool | None = None) -> NanitSoundLightSoundSwitch:
     switch.coordinator = coordinator  # type: ignore[attr-defined]
     switch._command_is_on = None
     switch._command_ts = 0.0
+    switch._restored_is_on = None
     return switch
 
 

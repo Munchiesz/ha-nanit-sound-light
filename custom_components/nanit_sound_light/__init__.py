@@ -44,10 +44,16 @@ def _resolve_speaker_ip(entry: ConfigEntry) -> str | None:
     """Return the effective speaker IP, preferring options over data.
 
     Options-flow edits write to ``entry.options``; initial setup wrote the
-    value to ``entry.data``. Read options first so live edits take effect,
-    and fall back to data for the first load.
+    value to ``entry.data``. Once the user has touched the options flow
+    even once, options are authoritative — including an explicit empty
+    string, which means "drop back to cloud relay". A prior ``or``-chain
+    silently fell through to ``entry.data`` when options held ``""`` and
+    never actually switched the user to cloud-only mode.
     """
-    raw = entry.options.get(CONF_SPEAKER_IP) or entry.data.get(CONF_SPEAKER_IP)
+    if CONF_SPEAKER_IP in entry.options:
+        raw = entry.options.get(CONF_SPEAKER_IP)
+    else:
+        raw = entry.data.get(CONF_SPEAKER_IP)
     return raw or None
 
 

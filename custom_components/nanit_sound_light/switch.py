@@ -15,8 +15,10 @@ import time
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NanitSoundLightConfigEntry
 from .aionanit_sl.exceptions import NanitTransportError
@@ -44,8 +46,14 @@ async def async_setup_entry(
     )
 
 
-class _BaseSLSwitch(NanitSoundLightEntity, SwitchEntity):
-    """Shared logic for Sound & Light switches (optimistic + grace period)."""
+class _BaseSLSwitch(NanitSoundLightEntity, SwitchEntity, RestoreEntity):
+    """Shared logic for Sound & Light switches (optimistic + grace period).
+
+    Mixes in ``RestoreEntity`` so a UI restart while the speaker is
+    unreachable (particularly in cloud-relay mode, where the relay sends
+    no initial state on connect) surfaces the last known on/off state
+    instead of blanking to ``unknown``.
+    """
 
     _state_attr: str = ""  # subclass sets: "sound_on" or "power_on"
 
@@ -54,6 +62,14 @@ class _BaseSLSwitch(NanitSoundLightEntity, SwitchEntity):
         super().__init__(coordinator)
         self._command_is_on: bool | None = None
         self._command_ts: float = 0.0
+        self._restored_is_on: bool | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last-known on/off state across HA restarts."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in (None, "unknown", "unavailable"):
+            self._restored_is_on = last.state == STATE_ON
 
     @property
     def is_on(self) -> bool | None:
@@ -63,10 +79,13 @@ class _BaseSLSwitch(NanitSoundLightEntity, SwitchEntity):
             and time.monotonic() - self._command_ts < _COMMAND_GRACE_PERIOD
         ):
             return self._command_is_on
-        if self.coordinator.data is None:
-            return None
-        value = getattr(self.coordinator.data, self._state_attr, None)
-        return bool(value) if value is not None else None
+        state = self.coordinator.data
+        if state is None:
+            return self._restored_is_on
+        value = getattr(state, self._state_attr, None)
+        if value is None:
+            return self._restored_is_on
+        return bool(value)
 
     def _handle_coordinator_update(self) -> None:
         """Clear grace early when the device push confirms our command.

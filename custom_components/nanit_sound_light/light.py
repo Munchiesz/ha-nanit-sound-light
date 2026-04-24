@@ -88,16 +88,18 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity, RestoreEntity):
         ):
             return self._command_is_on
 
-        if self.coordinator.data is None:
-            # No live data yet — fall back to the restored value while we
-            # wait for the first coordinator push.
-            return self._restored_is_on
+        # Fall back to the restored value whenever we don't yet have a real
+        # reading from the device. The coordinator seeds ``data`` with an
+        # all-``None`` default snapshot before the first push lands, so the
+        # prior ``data is None`` check never fired after startup-while-offline
+        # — we'd end up reporting ``None`` (unknown) even when HA had a
+        # perfectly good restored value in hand.
         state = self.coordinator.data
-        if state.light_enabled is not None:
-            return state.light_enabled
-        if state.brightness is not None:
-            return state.brightness > _LIGHT_ON_BRIGHTNESS_EPSILON
-        return None
+        if state is None or state.light_enabled is None:
+            if state is not None and state.brightness is not None:
+                return state.brightness > _LIGHT_ON_BRIGHTNESS_EPSILON
+            return self._restored_is_on
+        return state.light_enabled
 
     def _handle_coordinator_update(self) -> None:
         """Clear grace early when the device push confirms our command.
@@ -117,14 +119,12 @@ class NanitSoundLightLamp(NanitSoundLightEntity, LightEntity, RestoreEntity):
     @property
     def brightness(self) -> int | None:
         """Return brightness in HA's 0-255 scale."""
-        if self.coordinator.data is None:
-            # No live data yet — fall back to the restored value while we
-            # wait for the first coordinator push.
-            return self._restored_brightness
-        dev_brightness = self.coordinator.data.brightness
-        if dev_brightness is None:
-            return None
+        # Same rationale as ``is_on``: prefer restored values whenever the
+        # coordinator's snapshot doesn't carry a real brightness yet.
         state = self.coordinator.data
+        if state is None or state.brightness is None:
+            return self._restored_brightness
+        dev_brightness = state.brightness
         # Surface brightness=1 when the light is conceptually "on" but the
         # device reports ~0.0 — avoids HA interpreting it as off.
         if state.power_on and state.light_enabled and dev_brightness < _LIGHT_ON_BRIGHTNESS_EPSILON:

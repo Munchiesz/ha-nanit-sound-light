@@ -157,7 +157,11 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
                 {},
             )
             if not self._selected:
-                return self.async_abort(reason="no_speakers_on_account")
+                # The user picked an entry that vanished between the
+                # dropdown render and submit — surface a distinct reason
+                # from the "Nanit account has no speakers" abort so the
+                # error message in the UI is actionable.
+                return self.async_abort(reason="speaker_selection_failed")
             await self.async_set_unique_id(self._selected["speaker_uid"])
             self._abort_if_unique_id_configured()
             return await self.async_step_speaker_ip()
@@ -217,7 +221,16 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Start reauth — triggered when our piggybacked token reads fail."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        # Defensive: HA normally populates ``context["entry_id"]`` when it
+        # initiates a reauth flow, but third-party code paths (discovery,
+        # tests) can miss it. Abort cleanly with a dedicated reason instead
+        # of raising ``KeyError``.
+        entry_id = self.context.get("entry_id")
+        if entry_id is None:
+            return self.async_abort(reason="reauth_missing_entry")
+        self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
+        if self._reauth_entry is None:
+            return self.async_abort(reason="reauth_missing_entry")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -235,6 +248,10 @@ class NanitSoundLightConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             nanit_entry_id = self._reauth_entry.data.get(CONF_NANIT_ENTRY_ID)
+            if not isinstance(nanit_entry_id, str) or not nanit_entry_id:
+                # The config entry is missing the piggyback pointer (e.g.
+                # corrupted state) — there's nothing to reauth against.
+                return self.async_abort(reason="reauth_missing_entry")
             provider = NanitPiggybackTokenProvider(
                 self.hass,
                 nanit_entry_id,

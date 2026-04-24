@@ -13,6 +13,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NanitSoundLightConfigEntry
 from .aionanit_sl.exceptions import NanitTransportError
@@ -38,8 +39,13 @@ async def async_setup_entry(
     async_add_entities([NanitSoundLightTrack(coordinator)])
 
 
-class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
-    """Track selector — options come from ``available_tracks`` on state."""
+class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity, RestoreEntity):
+    """Track selector — options come from ``available_tracks`` on state.
+
+    ``RestoreEntity`` surfaces the last-known track name across HA
+    restarts, including the period before the cloud relay pushes a state
+    frame (cloud mode doesn't replay initial state on connect).
+    """
 
     _attr_translation_key = "track"
 
@@ -47,6 +53,19 @@ class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
         """Initialize."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.baby.camera_uid}_sound_light_track"
+        self._restored_track: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last-known track name across HA restarts."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in (
+            None,
+            "unknown",
+            "unavailable",
+            _NO_TRACKS_PLACEHOLDER,
+        ):
+            self._restored_track = last.state
 
     @property
     def options(self) -> list[str]:
@@ -64,9 +83,10 @@ class NanitSoundLightTrack(NanitSoundLightEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the currently selected track."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.current_track
+        state = self.coordinator.data
+        if state is None or state.current_track is None:
+            return self._restored_track
+        return state.current_track
 
     async def async_select_option(self, option: str) -> None:
         """Change the active track.

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -86,6 +87,20 @@ class NanitSoundLightCoordinator(DataUpdateCoordinator[SoundLightFullState]):
     @callback
     def _on_sl_event(self, event: SoundLightEvent) -> None:
         """Handle a push event from NanitSoundLight.subscribe()."""
+        if event.kind == SoundLightEventKind.AUTH_FAILED:
+            # A background loop hit a fatal auth error that the user must
+            # resolve. Kick off the reauth flow so the UI surfaces a
+            # reconfigure card — the entry stays loaded (entities go
+            # unavailable via the connection-change path) until the user
+            # completes reauth, at which point the flow reloads us.
+            if not self.config_entry.async_get_active_flow(self.hass, sources={"reauth"}):
+                _LOGGER.warning(
+                    "Sound & Light %s auth failure — starting reauth flow",
+                    self.sound_light.speaker_uid,
+                )
+                self.config_entry.async_start_reauth(self.hass)
+            return
+
         if event.kind == SoundLightEventKind.CONNECTION_CHANGE:
             transport_connected = self.sound_light.connected
             if transport_connected:
@@ -110,7 +125,7 @@ class NanitSoundLightCoordinator(DataUpdateCoordinator[SoundLightFullState]):
         self.async_set_updated_data(event.state)
 
     @callback
-    def _on_availability_timeout(self, _now: object) -> None:
+    def _on_availability_timeout(self, _now: datetime) -> None:
         """Grace period expired — mark entities unavailable."""
         self._availability_timer = None
         if not self.sound_light.connected:
@@ -123,7 +138,7 @@ class NanitSoundLightCoordinator(DataUpdateCoordinator[SoundLightFullState]):
             self.async_update_listeners()
 
     @callback
-    def _on_extended_disconnect(self, _now: object) -> None:
+    def _on_extended_disconnect(self, _now: datetime) -> None:
         """Longer grace expired — surface a repair issue."""
         self._extended_disconnect_timer = None
         if not self.sound_light.connected and not self._extended_disconnect_issue_active:

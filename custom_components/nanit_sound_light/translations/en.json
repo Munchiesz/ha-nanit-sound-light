@@ -39,6 +39,8 @@
       "nanit_needs_reauth": "The main Nanit integration's credentials are no longer valid. Open it, re-authenticate, then retry adding Sound & Light.",
       "already_configured": "This Sound & Light Machine is already configured.",
       "no_speakers_on_account": "No Sound & Light Machine is paired with this Nanit account.",
+      "speaker_selection_failed": "Could not find the selected speaker — the list may have changed. Start setup again.",
+      "reauth_missing_entry": "Cannot reauthenticate — the Sound & Light config entry is missing or incomplete. Remove and re-add the integration.",
       "reauth_successful": "Re-authentication successful."
     }
   },
